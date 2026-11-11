@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f172a">
+<title>Travel & Tour Prototype</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>#map{height:320px;width:100%;border-radius:12px}</style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-0 sm:p-4">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const inp = "w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-sky-500";
+const card = "bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3";
+const btn = "w-full bg-sky-600 hover:bg-sky-500 py-2.5 rounded-lg text-sm font-bold shadow transition";
+const TRIAL_DAYS = 7;
+const DEF_TICKET = { airline: 'Delta Air Lines', flight: 'DL1420', passenger: 'John Doe', ref: 'PNR-77X9Q', terminal: '4', gate: 'B22', seat: '12A' };
+const DEF_EXP = [
+  { id: 1, desc: 'Airport Express Train', amt: 20, cur: 'EUR', usd: 21.6 },
+  { id: 2, desc: 'Hotel Check-in Deposit', amt: 150, cur: 'EUR', usd: 162 }
+];
+const THEMES = ['Historic Orientation & Welcome Dinner', 'Iconic Landmarks & River Tour', 'Art Museums & Local Food Tour', 'Markets & Neighborhood Walk', 'Day Trip Outside the City', 'Parks, Cafes & Relaxation', 'Nightlife & Live Music', 'Shopping & Souvenirs'];
+const CURS = ['EUR', 'GBP', 'JPY', 'CAD', 'USD'];
+const FIELDS = [['airline', 'Airline'], ['flight', 'Flight'], ['passenger', 'Passenger'], ['ref', 'Booking ref'], ['terminal', 'Terminal'], ['gate', 'Gate'], ['seat', 'Seat']];
+
+function MapTab() {
+  const el = useRef(null), mapRef = useRef(null);
+  const [q, setQ] = useState(''), [msg, setMsg] = useState('');
+  useEffect(() => {
+    const m = L.map(el.current).setView([48.8566, 2.3522], 12);
+    mapRef.current = m;
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(m);
+    const pins = [
+      ['Charles de Gaulle Airport (Arrival)', [49.0097, 2.5479]],
+      ['Hotel Le Marais', [48.8575, 2.3622]],
+      ['Eiffel Tower Tour', [48.8584, 2.2945]],
+      ['Louvre Museum', [48.8606, 2.3376]]
+    ];
+    pins.forEach(p => { const b = document.createElement('b'); b.textContent = p[0]; L.marker(p[1]).addTo(m).bindPopup(b); });
+    L.polyline(pins.map(p => p[1]), { color: '#0ea5e9', dashArray: '6, 6' }).addTo(m);
+    return () => m.remove();
+  }, []);
+  const go = (lat, lng, name) => {
+    const m = mapRef.current; m.setView([lat, lng], 13);
+    const b = document.createElement('b'); b.textContent = name;
+    L.marker([lat, lng]).addTo(m).bindPopup(b).openPopup();
+  };
+  const search = async () => {
+    if (!q.trim()) return;
+    setMsg('Searching...');
+    try {
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q));
+      const d = await r.json();
+      if (!d[0]) { setMsg('No results found'); return; }
+      setMsg(''); go(+d[0].lat, +d[0].lon, d[0].display_name.split(',')[0]);
+    } catch (e) { setMsg('Search needs an internet connection'); }
+  };
+  const locate = () => {
+    if (!navigator.geolocation) { setMsg('Location not supported'); return; }
+    navigator.geolocation.getCurrentPosition(p => { setMsg(''); go(p.coords.latitude, p.coords.longitude, 'You are here'); }, () => setMsg('Location permission denied'));
+  };
+  return (
+    <div className="space-y-3">
+      <h2 className="text-lg font-bold">Interactive Route & Map</h2>
+      <div className="flex gap-2">
+        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="Search any place" className="flex-1 bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs focus:outline-none" />
+        <button onClick={search} className="bg-sky-600 px-3 rounded-lg text-xs font-bold">Go</button>
+        <button onClick={locate} className="bg-slate-800 px-3 rounded-lg text-xs">📍</button>
+      </div>
+      {msg && <p className="text-xs text-amber-300">{msg}</p>}
+      <div ref={el} id="map" className="border border-slate-700"></div>
+      <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-xs space-y-1">
+        <p className="font-bold text-sky-400">Day 1 Route Breakdown:</p>
+        <p className="text-slate-300">• Stop 1: Charles de Gaulle Airport (Arrival)</p>
+        <p className="text-slate-300">• Stop 2: Hotel Le Marais (Check-in)</p>
+        <p className="text-slate-300">• Stop 3: Eiffel Tower & River Cruise</p>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState('vault');
+  const [ticket, setTicket] = useState(() => load('tv_ticket', DEF_TICKET));
+  const [draft, setDraft] = useState(null);
+  const [alertMsg, setAlertMsg] = useState(null);
+  const [expenses, setExpenses] = useState(() => load('tv_exp', DEF_EXP));
+  const [rates, setRates] = useState(() => load('tv_rates', { USD: 1, EUR: 0.926, GBP: 0.79, JPY: 150, CAD: 1.37 }));
+  const [live, setLive] = useState(false);
+  const [online, setOnline] = useState(navigator.onLine);
+  const [start, setStart] = useState(() => { let s = load('tv_start', 0); if (!s) { s = Date.now(); save('tv_start', s); } return s; });
+  const [desc, setDesc] = useState(''), [amt, setAmt] = useState(''), [cur, setCur] = useState('EUR');
+  const [dest, setDest] = useState('Paris, France'), [budget, setBudget] = useState('1500'), [days, setDays] = useState('3');
+  const [loading, setLoading] = useState(false), [plan, setPlan] = useState(null);
+  const qrRef = useRef(null);
+
+  const daysLeft = Math.max(0, Math.ceil(TRIAL_DAYS - (Date.now() - start) / 864e5));
+
+  useEffect(() => {
+    const on = () => setOnline(true), off = () => setOnline(false);
+    window.addEventListener('online', on); window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+  useEffect(() => {
+    fetch('https://api.frankfurter.app/latest?from=USD&to=EUR,GBP,JPY,CAD')
+      .then(r => r.json())
+      .then(d => { const r = { USD: 1, ...d.rates }; setRates(r); setLive(true); save('tv_rates', r); })
+      .catch(() => {});
+  }, []);
+  useEffect(() => { save('tv_ticket', ticket); }, [ticket]);
+  useEffect(() => { save('tv_exp', expenses); }, [expenses]);
+  useEffect(() => {
+    if (tab === 'vault' && !draft && qrRef.current) {
+      qrRef.current.innerHTML = '';
+      new QRCode(qrRef.current, {
+        text: `${ticket.passenger} ${ticket.flight} GATE-${ticket.gate} SEAT-${ticket.seat}`,
+        width: 130, height: 130, colorDark: "#0f172a", colorLight: "#ffffff"
+      });
+    }
+  }, [tab, ticket, draft]);
+
+  const simulateGateChange = () => {
+    const msg = `Flight ${ticket.flight} Update: Gate changed to C14 (Terminal 2). Boarding in 25 min.`;
+    setTicket({ ...ticket, gate: 'C14', terminal: '2' });
+    setAlertMsg(msg);
+    try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) {}
+    try {
+      if ('Notification' in window) {
+        if (Notification.permission === 'granted') new Notification('Flight Alert', { body: msg });
+        else if (Notification.permission === 'default') Notification.requestPermission();
+      }
+    } catch (e) {}
+    setTimeout(() => setAlertMsg(null), 8000);
+  };
+
+  const addExpense = (e) => {
+    e.preventDefault();
+    const a = parseFloat(amt);
+    if (!desc || !a) return;
+    setExpenses([{ id: Date.now(), desc, amt: a, cur, usd: a / rates[cur] }, ...expenses]);
+    setDesc(''); setAmt('');
+  };
+  const totalUsd = expenses.reduce((s, x) => s + x.usd, 0);
+
+  const generatePlan = () => {
+    setLoading(true);
+    setTimeout(() => {
+      const n = Math.min(10, Math.max(1, parseInt(days) || 1));
+      const per = Math.round((parseFloat(budget) || 0) * 0.85 / n);
+      const list = Array.from({ length: n }, (_, i) => ({ day: i + 1, title: THEMES[i % THEMES.length], cost: Math.max(0, per + (i % 2 ? -1 : 1) * Math.round(per * 0.1)) }));
+      setPlan({ destination: dest, total: list.reduce((s, d) => s + d.cost, 0), days: list });
+      setLoading(false);
+    }, 1000);
+  };
+
+  const resetTrial = () => {
+    if (confirm('Restart the 7-day trial? (demo only)')) { const s = Date.now(); save('tv_start', s); setStart(s); }
+  };
+
+  const tabBtn = (id, icon, label) => (
+    <button onClick={() => setTab(id)} className={`flex flex-col items-center py-1 text-[11px] font-semibold ${tab === id ? 'text-sky-400' : 'text-slate-400'}`}>
+      <span className="text-base mb-0.5">{icon}</span>{label}
+    </button>
+  );
+
+  return (
+    <div className="w-full sm:max-w-md bg-slate-950 border border-slate-800 sm:rounded-3xl shadow-2xl flex flex-col h-screen sm:h-[840px] overflow-hidden">
+      <div className="bg-slate-900 px-6 py-3 border-b border-slate-800 flex items-center justify-between">
+        <span className="text-xs font-semibold text-sky-400">TRAVEL & TOUR PROTOTYPE</span>
+        <button onClick={resetTrial} className="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded-full">
+          {daysLeft > 0 ? `Trial: ${daysLeft} day${daysLeft > 1 ? 's' : ''} left` : 'Trial ended'}
+        </button>
+      </div>
+
+      {!online && <div className="bg-slate-800 text-slate-300 text-xs px-4 py-1.5 text-center">📴 Offline mode: your saved data is still available</div>}
+      {alertMsg && (
+        <div className="bg-amber-500/20 border-b border-amber-500/50 p-3 flex items-start space-x-2 text-amber-200 text-xs">
+          <span className="text-base">⚠️</span>
+          <div><p className="font-bold">Live Flight Alert (Simulated)</p><p>{alertMsg}</p></div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {daysLeft === 0 ? (
+          <div className={card + " text-center mt-10"}>
+            <p className="text-3xl">🔒</p>
+            <h2 className="font-bold text-lg">Your free trial has ended</h2>
+            <p className="text-xs text-slate-400">In the full app, this is where users would subscribe.</p>
+            <button onClick={resetTrial} className={btn}>Restart trial (demo)</button>
+          </div>
+        ) : (<>
+
+        {tab === 'vault' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-bold">Offline Travel Vault</h2>
+              <button onClick={simulateGateChange} className="text-xs bg-sky-600 hover:bg-sky-500 px-2.5 py-1.5 rounded-lg font-semibold shadow">Simulate Gate Alert</button>
+            </div>
+            {draft ? (
+              <div className={card}>
+                <p className="text-xs text-sky-400 font-semibold">Enter your own flight details</p>
+                {FIELDS.map(([k, label]) => (
+                  <div key={k}>
+                    <label className="text-xs text-slate-400">{label}</label>
+                    <input value={draft[k]} onChange={e => setDraft({ ...draft, [k]: e.target.value })} className={inp} />
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <button onClick={() => { setTicket(draft); setDraft(null); }} className="flex-1 bg-emerald-600 py-2 rounded-lg text-xs font-bold">Save</button>
+                  <button onClick={() => setDraft(null)} className="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div className={card}>
+                <div className="flex justify-between border-b border-slate-800 pb-3">
+                  <div><p className="text-xs text-slate-400">AIRLINE</p><p className="text-xl font-extrabold text-white">{ticket.airline}</p></div>
+                  <div className="text-right"><p className="text-xs text-slate-400">FLIGHT</p><p className="text-xl font-bold text-sky-400">{ticket.flight}</p></div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 bg-slate-950 p-3 rounded-xl text-center border border-slate-800/80">
+                  <div><p className="text-[10px] text-slate-400">TERMINAL</p><p className="text-base font-bold text-white">{ticket.terminal}</p></div>
+                  <div><p className="text-[10px] text-slate-400">GATE</p><p className="text-base font-bold text-amber-400">{ticket.gate}</p></div>
+                  <div><p className="text-[10px] text-slate-400">SEAT</p><p className="text-base font-bold text-emerald-400">{ticket.seat}</p></div>
+                </div>
+                <div className="flex justify-between text-xs text-slate-300">
+                  <div><p className="text-slate-500">PASSENGER</p><p className="font-semibold">{ticket.passenger}</p></div>
+                  <div className="text-right"><p className="text-slate-500">BOOKING REF</p><p className="font-semibold">{ticket.ref}</p></div>
+                </div>
+                <div className="bg-white p-4 rounded-xl flex flex-col items-center justify-center">
+                  <div ref={qrRef}></div>
+                  <p className="text-slate-700 text-[11px] font-semibold mt-2">Saved on this device • Works offline</p>
+                </div>
+                <button onClick={() => setDraft(ticket)} className="w-full bg-slate-800 py-2 rounded-lg text-xs font-bold">✏️ Edit ticket details</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'map' && <MapTab />}
+
+        {tab === 'planner' && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold">Itinerary Planner</h2>
+            <div className={card}>
+              <div><label className="text-xs text-slate-400">Destination</label>
+                <input value={dest} onChange={e => setDest(e.target.value)} className={inp} /></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="text-xs text-slate-400">Budget ($)</label>
+                  <input type="number" value={budget} onChange={e => setBudget(e.target.value)} className={inp} /></div>
+                <div><label className="text-xs text-slate-400">Days (1-10)</label>
+                  <input type="number" value={days} onChange={e => setDays(e.target.value)} className={inp} /></div>
+              </div>
+              <button onClick={generatePlan} disabled={loading} className={btn}>{loading ? 'Building plan...' : 'Generate Itinerary'}</button>
+              <p className="text-[10px] text-slate-500 text-center">Demo planner. Real AI suggestions come in the full version.</p>
+            </div>
+            {plan && (
+              <div className={card}>
+                <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                  <h3 className="font-bold text-sky-400">{plan.destination}</h3>
+                  <span className="text-xs bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded border border-emerald-800">Est: ${plan.total} USD</span>
+                </div>
+                {plan.days.map(d => (
+                  <div key={d.day} className="text-xs border-b border-slate-800/60 pb-2 flex justify-between">
+                    <div><p className="font-bold text-slate-200">Day {d.day}</p><p className="text-slate-400">{d.title}</p></div>
+                    <span className="text-emerald-400 font-semibold">${d.cost}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'budget' && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold">Trip Budget & Currency</h2>
+            <form onSubmit={addExpense} className={card}>
+              <p className="text-xs text-sky-400 font-semibold">
+                {live ? '🟢 Live rates' : '🟡 Saved rates'}: 1 EUR ≈ {(1 / rates.EUR).toFixed(3)} USD
+              </p>
+              <input type="text" placeholder="Expense description" value={desc} onChange={e => setDesc(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs focus:outline-none" />
+              <div className="flex gap-2">
+                <input type="number" step="any" placeholder="Amount" value={amt} onChange={e => setAmt(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs focus:outline-none" />
+                <select value={cur} onChange={e => setCur(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs">
+                  {CURS.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg text-xs font-bold">Add Expense</button>
+            </form>
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+                <span>Logged Expenses</span><span className="text-emerald-400">Total ${totalUsd.toFixed(2)}</span>
+              </div>
+              {expenses.length === 0 && <p className="text-xs text-slate-500">No expenses yet.</p>}
+              {expenses.map(x => (
+                <div key={x.id} className="bg-slate-900 border border-slate-800/80 p-3 rounded-xl flex justify-between items-center text-xs">
+                  <div><p className="font-semibold text-slate-200">{x.desc}</p><p className="text-slate-500">{x.amt} {x.cur}</p></div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-emerald-400">${x.usd.toFixed(2)}</span>
+                    <button onClick={() => setExpenses(expenses.filter(y => y.id !== x.id))} className="text-slate-500 text-base">✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        </>)}
+      </div>
+
+      <div className="bg-slate-900 border-t border-slate-800 grid grid-cols-4 py-2">
+        {tabBtn('vault', '🎫', 'Vault')}
+        {tabBtn('map', '🗺️', 'Map')}
+        {tabBtn('planner', '✨', 'Plan')}
+        {tabBtn('budget', '💳', 'Budget')}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }
+</script>
+</body>
+  </html>
